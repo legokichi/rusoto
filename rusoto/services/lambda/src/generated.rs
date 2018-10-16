@@ -5009,7 +5009,7 @@ impl Lambda for LambdaClient {
         );
 
         let mut request = SignedRequest::new("POST", "lambda", &self.region, &request_uri);
-        request.set_content_type("application/x-amz-json-1.1".to_owned());
+        request.set_content_type("binary/octet-stream".to_owned());
 
         let encoded = if let Some(ref payload) = input.payload {
             Some(payload.to_owned())

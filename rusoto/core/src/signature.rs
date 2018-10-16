@@ -358,55 +358,50 @@ impl SignedRequest {
         }
 
         // build the canonical request
-        let signed_headers = signed_headers(&self.headers);
         self.canonical_uri = canonical_uri(&self.path);
-        let canonical_headers = canonical_headers(&self.headers);
+        // self.canonical_uri = self.path.clone();
 
-        let canonical_request: String;
-
+        println!("path: {}", self.path);
+        println!("canonical_uri: {}", self.canonical_uri);
         let (digest, len) = match self.payload {
             None => {
-                canonical_request = format!("{}\n{}\n{}\n{}\n{}\n{}",
-                                            &self.method,
-                                            self.canonical_uri,
-                                            self.canonical_query_string,
-                                            canonical_headers,
-                                            signed_headers,
-                                            &to_hexdigest(""));
-                (Some(to_hexdigest("")), None)
+                println!("None");
+                let digest = to_hexdigest("");
+                (digest, None)
             }
             Some(SignedRequestPayload::Buffer(ref payload)) => {
+                println!("Buffer");
                 let (digest, len) = digest_payload(&payload);
-                canonical_request = format!("{}\n{}\n{}\n{}\n{}\n{}",
-                                            &self.method,
-                                            self.canonical_uri,
-                                            self.canonical_query_string,
-                                            canonical_headers,
-                                            signed_headers,
-                                            &digest);
-                (Some(digest), Some(len))
+                (digest, Some(len))
             }
             Some(SignedRequestPayload::Stream(len, _)) => {
-                canonical_request = format!("{}\n{}\n{}\n{}\n{}\n{}",
-                                            &self.method,
-                                            self.canonical_uri,
-                                            self.canonical_query_string,
-                                            canonical_headers,
-                                            signed_headers,
-                                            "UNSIGNED-PAYLOAD");
-                (Some("UNSIGNED-PAYLOAD".to_owned()), len)
+                let digest = "UNSIGNED-PAYLOAD".to_string();
+                (digest, len)
             }
         };
-
-        if let Some(digest) = digest {
-            self.remove_header("x-amz-content-sha256");
-            self.add_header("x-amz-content-sha256", &digest);
-        }
+        
+        self.remove_header("x-amz-content-sha256");
+        self.add_header("x-amz-content-sha256", &digest);
 
         if let Some(len) = len {
             self.remove_header("content-length");
             self.add_header("content-length", &format!("{}", len));
         }
+        let signed_headers = signed_headers(&self.headers);
+        let canonical_headers = canonical_headers(&self.headers);
+        let canonical_request = format!("{}\n{}\n{}\n{}\n{}\n{}",
+                                    &self.method,
+                                    self.canonical_uri,
+                                    self.canonical_query_string,
+                                    canonical_headers,
+                                    signed_headers,
+                                    digest);
+
+        println!("====canonical_request====");
+        println!("{}", canonical_request);
+        println!("====-----------------====");
+
+        
 
         // use the hashed canonical request to build the string to sign
         let hashed_canonical_request = to_hexdigest(&canonical_request);
@@ -416,12 +411,20 @@ impl SignedRequest {
                             &self.service);
         let string_to_sign = string_to_sign(date, &hashed_canonical_request, &scope);
 
+        println!("====string_to_sign====");
+        println!("{}", string_to_sign);
+        println!("====--------------====");
+
         // sign the string
         let signature = sign_string(&string_to_sign,
                                     creds.aws_secret_access_key(),
                                     date,
                                     &self.region.name(),
                                     &self.service);
+
+        println!("====signature====");
+        println!("{}", signature);
+        println!("====---------====");
 
         // build the actual auth header
         let auth_header = format!("AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
@@ -431,6 +434,14 @@ impl SignedRequest {
                                   signature);
         self.remove_header("authorization");
         self.add_header("authorization", &auth_header);
+        
+        println!("========headers=======");
+        for (h, v) in self.headers.iter() {
+            for g in v.iter() {
+                println!("{}: {}", h.as_str(), ::std::str::from_utf8(&g).unwrap());
+            }
+        }
+        println!("========-------=======");
     }
 }
 
@@ -522,7 +533,7 @@ fn canonical_values(values: &[Vec<u8>]) -> String {
 }
 
 fn skipped_headers(header: &str) -> bool {
-    ["authorization", "content-length", "user-agent"].contains(&header)
+    ["authorization", "content-type", "content-length", "user-agent"].contains(&header)
 }
 
 /// Returns standardised URI
